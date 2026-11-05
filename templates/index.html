@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EaniFIN</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+  body { background: #f4f6f8; }
+  .card { border: none; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+  .bank-card .balance { font-size: 1.5rem; font-weight: 700; }
+  .bank-card .name { text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; color: #6c757d; }
+  .bank-card .type { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-quick { width: 100%; padding: 1rem; font-weight: 600; }
+  .chart-wrap { height: 320px; }
+  .event-row { cursor: pointer; }
+  .edit-inline .form-control, .edit-inline .form-select { font-size: 0.85rem; padding: 0.35rem 0.5rem; }
+  .edit-inline label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 0.2rem; }
+  .saved-badge { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-0"><i class="bi bi-wallet2 me-2"></i>EaniFIN</h2>
+      <p class="text-muted mb-0">Lazy-log personal finance &mdash; input, then dashboard.</p>
+    </div>
+    <span class="badge bg-primary fs-6" id="totalBadge">Total $0.00</span>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-calendar"></i></span>
+        <input type="month" id="monthPicker" class="form-control" value="">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card bg-light">
+        <div class="card-body">
+          <div class="text-small text-muted">Total Initial</div>
+          <div class="h5 fw-bold" id="totalInitial">$0.00</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card bg-light">
+        <div class="card-body">
+          <div class="text-small text-muted">Total Current</div>
+          <div class="h5 fw-bold text-primary" id="totalCurrent">$0.00</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card bg-light">
+        <div class="card-body">
+          <div class="text-small text-muted">Net Change</div>
+          <div class="h5 fw-bold" id="netChange">$0.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Banks -->
+    <div class="col-12 col-lg-4">
+      <div class="card mb-4">
+        <div class="card-header fw-bold">Banks <span class="badge bg-secondary float-end" id="bankCount">0</span></div>
+        <div class="list-group list-group-flush" id="banksList">
+          <!-- injected -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick log -->
+    <div class="col-12 col-lg-4">
+      <div class="card mb-4">
+        <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+          <span>Quick Log <span class="badge bg-secondary">lazy mode</span></span>
+        </div>
+        <div class="card-body">
+          <form id="logForm" onsubmit="return false">
+            <div class="mb-2">
+              <label class="form-label small">Amount</label>
+              <input type="number" id="logAmount" step="0.01" class="form-control form-control-sm" placeholder="e.g. 50 or -20">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Type</label>
+              <select id="logType" class="form-select form-select-sm">
+                <option value="credit">+ Add (allowance / income)</option>
+                <option value="debit">- Subtract (cost / spent)</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Bank</label>
+              <select id="logAccount" class="form-select form-select-sm"></select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Date</label>
+              <input type="date" id="logDate" class="form-control form-control-sm" value="">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Description</label>
+              <input type="text" id="logDesc" class="form-control form-control-sm" placeholder="job hunt, coffee, etc.">
+            </div>
+            <button class="btn btn-primary btn-quick" onclick="submitLog()"><i class="bi bi-plus-circle me-2"></i>Log It</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+          <span>Monthly Balance</span>
+          <span class="badge bg-dark" id="chartTrend">--</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="chart-wrap p-3">
+            <canvas id="balanceChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spending Events -->
+  <div class="row mt-5">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+          <span>Spending Events</span>
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#eventForm">+ Add Event</button>
+        </div>
+        <div class="collapse" id="eventForm">
+          <div class="card-body">
+            <form id="eventFormEl" onsubmit="return false">
+              <div class="row g-2">
+                <div class="col-12 col-sm-2">
+                  <input type="date" id="evDate" class="form-control form-control-sm" value="">
+                </div>
+                <div class="col-12 col-sm-2">
+                  <input type="text" id="evTitle" class="form-control form-control-sm" placeholder="Title (e.g. Job Hunt Day)">
+                </div>
+                <div class="col-12 col-sm-2">
+                  <input type="text" id="evDesc" class="form-control form-control-sm" placeholder="Short desc">
+                </div>
+                <div class="col-12 col-sm-2">
+                  <input type="number" step="0.01" id="evStart" class="form-control form-control-sm" placeholder="Start allowance" oninput="calcSaved()">
+                </div>
+                <div class="col-12 col-sm-2">
+                  <input type="number" step="0.01" id="evSpent" class="form-control form-control-sm" placeholder="What I spent" oninput="calcSaved()">
+                </div>
+                <div class="col-12 col-sm-2 d-flex align-items-end">
+                  <div class="form-control form-control-sm bg-light text-muted border-0" id="evSavedDisplay" style="height:calc(1.5em + 0.75rem + 2px); display:flex; align-items:center;">Saved: $0.00</div>
+                </div>
+                <div class="col-12 mt-2 mt-sm-0">
+                  <button class="btn btn-primary btn-sm w-100" onclick="submitEvent()"><i class="bi bi-calendar-event me-2"></i>Save Event</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Date</th><th>Title</th><th>Desc</th><th>Start Allowance</th><th>Spent</th><th>Saved End</th>
+              </tr>
+            </thead>
+            <tbody id="eventsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const API = '/api';
+let chartInstance = null;
+const today = new Date().toISOString().split('T')[0];
+
+function fmt(n){ return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2}).format(n || 0); }
+
+// clamp all date inputs to today (no future logging)
+function clampDates(){
+  document.querySelectorAll('input[type="date"]').forEach(el=>{ el.max = today; if(!el.value) el.value = today; });
+}
+
+async function load(){
+  clampDates();
+  const month = document.getElementById('monthPicker').value;
+  const [accts, monthly, events] = await Promise.all([
+    fetch(`${API}/accounts`).then(r=>r.json()),
+    fetch(`${API}/monthly?month=${month}`).then(r=>r.json()),
+    fetch(`${API}/events`).then(r=>r.json())
+  ]);
+
+  // banks list (editable)
+  const list = document.getElementById('banksList');
+  const sel = document.getElementById('logAccount');
+  list.innerHTML=''; sel.innerHTML='';
+  let total=0;
+  accts.forEach(a=>{
+    total += a.balance;
+    const initial = a.initial_money != null ? a.initial_money : a.initial_balance;
+    const el = document.createElement('div');
+    el.className='list-group-item bank-card d-flex justify-content-between align-items-center border-bottom';
+    el.innerHTML = `
+      <div class="edit-inline" style="min-width:210px;">
+        <div class="name fw-bold">${a.name}</div>
+        <div class="type text-truncate" style="max-width:150px;">${a.type}</div>
+      </div>
+      <div style="min-width:130px;">
+        <label class="edit-inline label">Initial</label>
+        <input type="number" step="0.01" class="form-control form-control-sm edit-inline initial-input" value="${fmt(initial)}" data-id="${a.id}">
+        <label class="edit-inline label mt-1">Current</label>
+        <div class="balance text-primary">${fmt(a.balance)}</div>
+      </div>
+      <div style="min-width:120px;">
+        <label class="edit-inline label">Type</label>
+        <select class="form-select form-select-sm edit-inline type-select" data-id="${a.id}">
+          <option value="cash" ${a.type==='cash'?'selected':''}>Cash</option>
+          <option value="online app" ${a.type==='online app'?'selected':''}>Online App</option>
+          <option value="bank" ${a.type==='bank'?'selected':''}>Bank</option>
+        </select>
+      </div>
+    `;
+    list.appendChild(el);
+    const o=document.createElement('option'); o.value=a.id; o.textContent=a.name; sel.appendChild(o);
+
+    // wire name/type/initial edits
+    const nameDiv = el.querySelector('.name');
+    const typeSel = el.querySelector('.type-select');
+    const initInp = el.querySelector('.initial-input');
+    nameDiv.addEventListener('blur', async ()=>{
+      const v = nameDiv.textContent.trim();
+      if(!v) return;
+      await fetch(`${API}/accounts/${a.id}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:v})});
+      load();
+    });
+    nameDiv.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); nameDiv.blur(); } });
+    nameDiv.contentEditable = 'true';
+    typeSel.addEventListener('change', async ()=>{
+      await fetch(`${API}/accounts/${a.id}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:typeSel.value})});
+      load();
+    });
+    initInp.addEventListener('change', async ()=>{
+      const v = parseFloat(initInp.value) || 0;
+      await fetch(`${API}/monthly`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:a.id, month, initial_money:v})});
+      load();
+    });
+  });
+  document.getElementById('totalBadge').textContent = fmt(total);
+  document.getElementById('bankCount').textContent = accts.length;
+
+  // monthly totals
+  document.getElementById('totalInitial').textContent = fmt(monthly.total_initial);
+  document.getElementById('totalCurrent').textContent = fmt(monthly.total_current);
+  const net = monthly.total_current - monthly.total_initial;
+  document.getElementById('netChange').textContent = fmt(net);
+  document.getElementById('netChange').className = 'h5 fw-bold ' + (net>=0?'text-success':'text-danger');
+
+  // events
+  const tb=document.getElementById('eventsBody');
+  tb.innerHTML='';
+  events.forEach(e=>{
+    const net = e.saved_end - e.start_allowance;
+    const tr = document.createElement('tr');
+    tr.className='event-row';
+    tr.innerHTML = `<td>${e.event_date}</td><td><strong>${e.title}</strong></td><td class="text-truncate" style="max-width:160px">${e.description||'-'}</td>
+      <td>${fmt(e.start_allowance)}</td><td>${fmt(e.spent)}</td>
+      <td class="saved-badge ${e.saved_end>=0?'text-success':'text-danger'}">${fmt(e.saved_end)}</td>`;
+    tb.appendChild(tr);
+  });
+
+  loadChart();
+}
+
+function calcSaved(){
+  const start = parseFloat(document.getElementById('evStart').value)||0;
+  const spent = parseFloat(document.getElementById('evSpent').value)||0;
+  document.getElementById('evSavedDisplay').textContent = 'Saved: ' + fmt(start - spent);
+}
+
+async function loadChart(){
+  const month = document.getElementById('monthPicker').value;
+  const res = await fetch(`${API}/chart?month=${month}`);
+  const data = await res.json();
+  const ctx = document.getElementById('balanceChart').getContext('2d');
+  if(chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    type:'line', data:{ labels: data.labels, datasets: data.datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales: { x:{display:true}, y:{beginAtZero:false, ticks:{callback:v=>'$'+v}} },
+      animation:{duration:0}
+    }
+  });
+  const ds = data.datasets[0].data;
+  const trend = document.getElementById('chartTrend');
+  if(ds.length>=2){
+    const change = ds[ds.length-1]-ds[0];
+    trend.textContent = (change>=0?'\u2191 ':'\u2193 ') + fmt(Math.abs(change));
+    trend.className = 'badge ' + (change>=0?'bg-success':'bg-danger');
+  }
+}
+
+async function submitLog(){
+  const amount = parseFloat(document.getElementById('logAmount').value);
+  const type = document.getElementById('logType').value;
+  const acct = parseInt(document.getElementById('logAccount').value);
+  const desc = document.getElementById('logDesc').value;
+  const logDate = document.getElementById('logDate').value;
+  if(!amount){ alert('Enter an amount'); return; }
+  await fetch(`${API}/accounts/${acct}/transaction`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({amount,type,description:desc,date:logDate})
+  });
+  document.getElementById('logForm').reset();
+  document.getElementById('logDate').value = today;
+  load();
+}
+
+async function submitEvent(){
+  const payload = {
+    event_date: document.getElementById('evDate').value,
+    title: document.getElementById('evTitle').value,
+    description: document.getElementById('evDesc').value,
+    start_allowance: parseFloat(document.getElementById('evStart').value||0),
+    spent: parseFloat(document.getElementById('evSpent').value||0)
+  };
+  if(!payload.event_date || !payload.title){ alert('Date and title required'); return; }
+  await fetch(`${API}/events`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  document.getElementById('eventFormEl').reset();
+  document.getElementById('evDate').value = today;
+  calcSaved();
+  new bootstrap.Collapse(document.getElementById('eventForm')).hide();
+  load();
+}
+
+document.getElementById('monthPicker').addEventListener('change', load);
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const cur = new Date().toISOString().slice(0,7);
+  document.getElementById('monthPicker').value = cur;
+  clampDates();
+  load();
+});
+</script>
+</body>
+</html>
